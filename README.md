@@ -1,66 +1,38 @@
-## Foundry
+<img align="right" width="150" height="150" top="100" src="./assets/readme.png">
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+# Solidity Circuits
 
-Foundry consists of:
+Write zero knowledge proofs in solidity.
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+Creating an alternative frontend for noir / nargo, developers can write, prove and verify zk circuits that are written in solidity. 
 
-## Documentation
+That's it.
 
-https://book.getfoundry.sh/
+## What is in this repo?
 
-## Usage
+This repo contains a `nargo` workspace where the files are written in solidity. Each example demonstrates a different type of circuit, use the run instructions below to test each of them!
 
-### Build
+### How to run?
 
-```shell
-$ forge build
+1. Make sure you have `noirup` installed - instructions below. 
+2. Go and clone this [branch of noir](https://github.com/noir-lang/noir/tree/md/solidity-circuits)
+3. Run `noirup -p .` to replace your local nargo binary with the one with solidity support
+4. Run `nargo check` to generate prover toml etc
+5. Enter the values you want in your generate your proof with in `Prover.toml`
+6. `nargo compile`
+7. `nargo prove`
+8. `nargo verify`
+
+
+### First time with Noir?
+
+See the official Noir installation [instructions](https://noir-lang.org/getting_started/nargo_installation).
+
+Then, install the [Noir](https://github.com/noir-lang/noir) toolchain installer (`noirup`) with:
+
+```bash
+curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash
 ```
 
-### Test
-
-```shell
-$ forge test
-```
-
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+Now you've installed the `noirup` binary,
+Follow the instructions above to install the solidity circuits branch.
