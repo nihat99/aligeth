@@ -1,6 +1,6 @@
-[workspace]
-members = [
-    "add", 
-    "if",
-    "for"
-]
+[package]
+name = "if_test"
+type = "sol"
+authors = [""]
+
+[dependencies]
