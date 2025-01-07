@@ -1,10 +1,10 @@
-# https://hub.docker.com/_/postgres
-FROM postgres:16.3
-
-# Environment variables
-ENV POSTGRES_USER=explorer_user
-ENV POSTGRES_PASSWORD=explorer_pass
-ENV POSTGRES_DB=explorer_db
-
-# Expose the default PostgreSQL port
-EXPOSE 5432
+FROM python:3.11
+RUN apt-get update && \
+    apt-get install -y jq curl postgresql-client cron && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+COPY . .
+WORKDIR /package_managers/homebrew
+RUN chmod +x /package_managers/homebrew/pipeline.sh \
+    /package_managers/homebrew/schedule.sh
+CMD ["/package_managers/homebrew/schedule.sh"]

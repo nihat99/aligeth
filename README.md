@@ -1,38 +1,78 @@
-<img align="right" width="150" height="150" top="100" src="./assets/readme.png">
+# Homebrew
 
-# Solidity Circuits
+The Homebrew service uses Homebrew's JSON API Documentation to build the Homebrew data
+model. It's lightweight -- written in shell scripts, `jq`, and `psql` -- and
+containerized using Docker
 
-Write zero knowledge proofs in solidity.
+# Getting Started
 
-Creating an alternative frontend for noir / nargo, developers can write, prove and verify zk circuits that are written in solidity. 
-
-That's it.
-
-## What is in this repo?
-
-This repo contains a `nargo` workspace where the files are written in solidity. Each example demonstrates a different type of circuit, use the run instructions below to test each of them!
-
-### How to run?
-
-1. Make sure you have `noirup` installed - instructions below. 
-2. Go and clone this [branch of noir](https://github.com/noir-lang/noir/tree/md/solidity-circuits)
-3. Run `noirup -p .` to replace your local nargo binary with the one with solidity support
-4. Run `nargo check` to generate prover toml etc
-5. Enter the values you want in your generate your proof with in `Prover.toml`
-6. `nargo compile`
-7. `nargo prove`
-8. `nargo verify`
-
-
-### First time with Noir?
-
-See the official Noir installation [instructions](https://noir-lang.org/getting_started/nargo_installation).
-
-Then, install the [Noir](https://github.com/noir-lang/noir) toolchain installer (`noirup`) with:
+To just run the Homebrew service, you can use the following commands:
 
 ```bash
-curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash
+docker compose build homebrew
+docker compose run homebrew
 ```
 
-Now you've installed the `noirup` binary,
-Follow the instructions above to install the solidity circuits branch.
+## Pipeline Overview
+
+The Homebrew pipeline consists of two main scripts:
+
+- `pipeline.sh`: Responsible for fetching, transforming, and loading Homebrew package
+  data.
+- `schedule.sh`: Handles the scheduling and execution of the pipeline script.
+
+> [!NOTE]
+> The key aspect of `pipeline.sh` to note is how it prepares the sql statements - since
+> our data model is completely normalized, we need to retrieve the IDs for each data
+> model when loading our "edge" data.
+>
+> For example, in the `user_packages` table, we need to know the `user_id` and
+> `package_id` for each record, which happens via a sub-select on each row. It sounds
+> awful, but Homebrew's data is pretty small, so we're not asking the database to do
+> much.
+
+### [`schedule.sh`](schedule.sh)
+
+The schedule.sh script sets up and manages the cron job for running the pipeline:
+
+- Creates a cron job based on the `FREQUENCY` environment variable. Defaults to 24 hrs.
+- Runs the pipeline immediately upon startup.
+- Starts the cron daemon and tails the log file.
+
+### [`jq` files](jq/)
+
+The jq files in the [`jq/`](jq/) directory are responsible for transforming the raw
+Homebrew JSON data into SQL statements for insertion into the database. Each file
+corresponds to a specific table or relationship in the database.
+
+To edit the jq files:
+
+- Navigate to the [`jq/`](jq/) directory.
+- Open the desired jq file in a text editor.
+- Modify the jq queries as needed.
+
+> [!NOTE]
+> You can comment using `#` in the jq files!
+
+Key jq files and their purposes:
+
+- [`packages.jq`](jq/packages.jq): Transforms package data.
+- [`urls.jq`](jq/urls.jq): Extracts and formats URL information.
+- [`versions.jq`](jq/versions.jq): Handles version data (currently assumes latest version).
+- [`package_url.jq`](jq/package_url.jq): Maps packages to their URLs.
+- [`dependencies.jq`](jq/dependencies.jq): Processes dependency information.
+
+## Notes
+
+- Homebrew's dependencies are not just restricted to the `{build,test,...}_dependencies`
+  fields listed in the JSON APIs...it also uses some system level packages denoted in
+  `uses_from_macos`, and `variations` (for linux). The pipeline currently does consider
+  these dependencies.
+- Homebrew's JSON API and formula.rb files do not specify all the versions available for
+  a package. It does provide the `stable` and `head` versions, which are pulled in
+  [`versions.jq`](jq/versions.jq).
+- Versioned formulae (like `python`, `postgresql`) are ones where the Homebrew package
+  specifies a version. The pipeline considers these packages individual packages,
+  and so creates new records in the `packages` table.
+- The data source for Homebrew does not retrieve the analytics information that is
+  available via the individual JSON API endpoints for each package.
