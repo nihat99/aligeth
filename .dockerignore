@@ -1,14 +1,10 @@
-docker/*
-**/.DS_Store
-**/.idea
-out
-cache
-**/build
-**/target
-**/aligned_verification_data
-**/broadcast
-volume
-nonce_*.bin
-docker-compose.yaml
-.github/**
-**.md
+# directories
+data/
+.venv/
+
+# other files
+.gitignore
+docker-compose.yml
+.DS_Store
+.git
+README.md

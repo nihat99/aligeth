@@ -1,0 +1,107 @@
+services:
+  db:
+    image: postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=s3cr3t
+    ports:
+      - "5435:5432"
+    volumes:
+      - ./data/db/data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  alembic:
+    build:
+      context: .
+      dockerfile: ./alembic/Dockerfile
+    environment:
+      - CHAI_DATABASE_URL=postgresql://postgres:s3cr3t@db:5432/chai
+      - PGPASSWORD=s3cr3t
+    depends_on:
+      db:
+        condition: service_healthy
+    working_dir: /alembic
+    entrypoint: ["./run_migrations.sh"]
+
+  crates:
+    build:
+      context: .
+      dockerfile: ./package_managers/crates/Dockerfile
+    environment:
+      - CHAI_DATABASE_URL=postgresql://postgres:s3cr3t@db:5432/chai
+      - NO_CACHE=${NO_CACHE:-false}
+      - PYTHONPATH=/
+      - DEBUG=${DEBUG:-false}
+      - TEST=${TEST:-false}
+      - FETCH=${FETCH:-true}
+      - FREQUENCY=${FREQUENCY:-24}
+    volumes:
+      - ./data/crates:/data/crates
+    depends_on:
+      db:
+        condition: service_healthy
+      alembic:
+        condition: service_completed_successfully
+
+  homebrew:
+    build:
+      context: .
+      dockerfile: ./package_managers/homebrew/Dockerfile
+    environment:
+      - CHAI_DATABASE_URL=postgresql://postgres:s3cr3t@db:5432/chai
+      - NO_CACHE=${NO_CACHE:-false}
+      - TEST=${TEST:-false}
+      - FETCH=${FETCH:-true}
+      - FREQUENCY=${FREQUENCY:-24}
+      - SOURCE=https://formulae.brew.sh/api/formula.json
+      - CODE_DIR=/package_managers/homebrew
+      - DATA_DIR=/data/homebrew
+    volumes:
+      - ./data/homebrew:/data/homebrew
+      - ./logs/homebrew:/var/log
+    depends_on:
+      db:
+        condition: service_healthy
+      alembic:
+        condition: service_completed_successfully
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://postgres:s3cr3t@db:5432/chai
+      - HOST=0.0.0.0
+      - PORT=8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      alembic:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  monitor:
+    build:
+      context: ./monitor
+      dockerfile: Dockerfile
+    environment:
+      - DOCKER_HOST=${DOCKER_HOST:-unix:///var/run/docker.sock}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      crates:
+        condition: service_started
+      homebrew:
+        condition: service_started

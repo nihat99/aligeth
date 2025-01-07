@@ -1,78 +1,223 @@
-# Homebrew
+# CHAI
 
-The Homebrew service uses Homebrew's JSON API Documentation to build the Homebrew data
-model. It's lightweight -- written in shell scripts, `jq`, and `psql` -- and
-containerized using Docker
+CHAI is an attempt at an open-source data pipeline for package managers. The
+goal is to have a pipeline that can use the data from any package manager and
+provide a normalized data source for myriads of different use cases.
 
-# Getting Started
+## Getting Started
 
-To just run the Homebrew service, you can use the following commands:
+Use [Docker](https://docker.com)
 
-```bash
-docker compose build homebrew
-docker compose run homebrew
+1. Install Docker
+2. Clone the chai repository (https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository)
+3. Using a terminal, navigate to the cloned repository directory
+4. Run `docker compose build` to create the latest Docker images
+5. Then, run `docker compose up` to launch.
+
+> [!NOTE]
+>
+> This will run CHAI for all package managers. As an example crates by
+> itself will take over an hour and consume >5GB storage.
+>
+> Currently, we support only two package managers:
+>
+> - crates
+> - Homebrew
+>
+> You can run a single package manager by running
+> `docker compose up -e ... <package_manager>`
+>
+> We are planning on supporting `NPM`, `PyPI`, and `rubygems` next.
+
+### Arguments
+
+Specify these eg. `FOO=bar docker compose up`:
+
+- `FREQUENCY`: Sets how often (in hours) the pipeline should run.
+- `TEST`: Runs the loader in test mode when set to true, skipping certain data insertions.
+- `FETCH`: Determines whether to fetch new data from the source when set to true.
+- `NO_CACHE`: When set to true, deletes temporary files after processing.
+
+> [!NOTE]
+> The flag `NO_CACHE` does not mean that files will not get downloaded to your local
+> storage (specifically, the ./data directory). It only means that we'll
+> delete these temporary files from ./data once we're done processing them.
+
+These arguments are all configurable in the `docker-compose.yml` file.
+
+### Docker Services Overview
+
+1. `db`: [PostgreSQL] database for the reduced package data
+2. `alembic`: handles migrations
+3. `package_managers`: fetches and writes data for each package manager
+4. `api`: a simple REST api for reading from the db
+
+### Hard Reset
+
+Stuff happens. Start over:
+
+`rm -rf ./data`: removes all the data the fetcher is putting.
+
+<!-- this is handled now that alembic/psycopg2 are in pkgx -->
+<!--
+## Alembic Alternatives
+
+- sqlx command line tool to manage migrations, alongside models for sqlx in rust
+- vapor's migrations are written in swift
+-->
+
+## Goals
+
+Our goal is to build a data schema that looks like this:
+
+![db/CHAI_ERD.png](db/CHAI_ERD.png)
+
+You can read more about specific data models in the dbs [readme](db/README.md)
+
+Our specific application extracts the dependency graph understand what are
+critical pieces of the open-source graph. We also built a simple example that displays
+[sbom-metadata](examples/sbom-meta) for your repository.
+
+There are many other potential use cases for this data:
+
+- License compatibility checker
+- Developer publications
+- Package popularity
+- Dependency analysis vulnerability tool (requires translating semver)
+
+> [!TIP]
+> Help us add the above to the examples folder.
+
+## FAQs / Common Issues
+
+1. The database url is `postgresql://postgres:s3cr3t@localhost:5435/chai`, and
+   is used as `CHAI_DATABASE_URL` in the environment. `psql CHAI_DATABASE_URL`
+   will connect you to the database.
+
+## Tasks
+
+These are tasks that can be run using [xcfile.dev]. If you use `pkgx`, typing
+`dev` loads the environment. Alternatively, run them manually.
+
+### reset
+
+```sh
+rm -rf db/data data .venv
 ```
 
-## Pipeline Overview
+### build
 
-The Homebrew pipeline consists of two main scripts:
+```sh
+docker compose build
+```
 
-- `pipeline.sh`: Responsible for fetching, transforming, and loading Homebrew package
-  data.
-- `schedule.sh`: Handles the scheduling and execution of the pipeline script.
+### start
 
-> [!NOTE]
-> The key aspect of `pipeline.sh` to note is how it prepares the sql statements - since
-> our data model is completely normalized, we need to retrieve the IDs for each data
-> model when loading our "edge" data.
->
-> For example, in the `user_packages` table, we need to know the `user_id` and
-> `package_id` for each record, which happens via a sub-select on each row. It sounds
-> awful, but Homebrew's data is pretty small, so we're not asking the database to do
-> much.
+Requires: build
 
-### [`schedule.sh`](schedule.sh)
+```sh
+docker compose up -d
+```
 
-The schedule.sh script sets up and manages the cron job for running the pipeline:
+### test
 
-- Creates a cron job based on the `FREQUENCY` environment variable. Defaults to 24 hrs.
-- Runs the pipeline immediately upon startup.
-- Starts the cron daemon and tails the log file.
+Env: TEST=true
+Env: DEBUG=true
 
-### [`jq` files](jq/)
+```sh
+docker compose up
+```
 
-The jq files in the [`jq/`](jq/) directory are responsible for transforming the raw
-Homebrew JSON data into SQL statements for insertion into the database. Each file
-corresponds to a specific table or relationship in the database.
+### full-test
 
-To edit the jq files:
+Requires: build
+Env: TEST=true
+Env: DEBUG=true
 
-- Navigate to the [`jq/`](jq/) directory.
-- Open the desired jq file in a text editor.
-- Modify the jq queries as needed.
+```sh
+docker compose up
+```
 
-> [!NOTE]
-> You can comment using `#` in the jq files!
+### stop
 
-Key jq files and their purposes:
+```sh
+docker compose down
+```
 
-- [`packages.jq`](jq/packages.jq): Transforms package data.
-- [`urls.jq`](jq/urls.jq): Extracts and formats URL information.
-- [`versions.jq`](jq/versions.jq): Handles version data (currently assumes latest version).
-- [`package_url.jq`](jq/package_url.jq): Maps packages to their URLs.
-- [`dependencies.jq`](jq/dependencies.jq): Processes dependency information.
+### logs
 
-## Notes
+```sh
+docker compose logs
+```
 
-- Homebrew's dependencies are not just restricted to the `{build,test,...}_dependencies`
-  fields listed in the JSON APIs...it also uses some system level packages denoted in
-  `uses_from_macos`, and `variations` (for linux). The pipeline currently does consider
-  these dependencies.
-- Homebrew's JSON API and formula.rb files do not specify all the versions available for
-  a package. It does provide the `stable` and `head` versions, which are pulled in
-  [`versions.jq`](jq/versions.jq).
-- Versioned formulae (like `python`, `postgresql`) are ones where the Homebrew package
-  specifies a version. The pipeline considers these packages individual packages,
-  and so creates new records in the `packages` table.
-- The data source for Homebrew does not retrieve the analytics information that is
-  available via the individual JSON API endpoints for each package.
+### db-reset
+
+Requires: stop
+
+```sh
+rm -rf db/data
+```
+
+### db-generate-migration
+
+Inputs: MIGRATION_NAME
+Env: CHAI_DATABASE_URL=postgresql://postgres:s3cr3t@localhost:5435/chai
+
+```sh
+cd alembic
+alembic revision --autogenerate -m "$MIGRATION_NAME"
+```
+
+### db-upgrade
+
+Env: CHAI_DATABASE_URL=postgresql://postgres:s3cr3t@localhost:5435/chai
+
+```sh
+cd alembic
+alembic upgrade head
+```
+
+### db-downgrade
+
+Inputs: STEP
+Env: CHAI_DATABASE_URL=postgresql://postgres:s3cr3t@localhost:5435/chai
+
+```sh
+cd alembic
+alembic downgrade -$STEP
+```
+
+### db
+
+```sh
+psql "postgresql://postgres:s3cr3t@localhost:5435/chai"
+```
+
+### db-list-packages
+
+```sh
+psql "postgresql://postgres:s3cr3t@localhost:5435/chai" -c "SELECT count(id) FROM packages;"
+```
+
+### db-list-history
+
+```sh
+psql "postgresql://postgres:s3cr3t@localhost:5435/chai" -c "SELECT * FROM load_history;"
+```
+
+### restart-api
+
+Refreshes table knowledge from the db.
+
+```sh
+docker-compose restart api
+```
+
+### remove-orphans
+
+```sh
+docker compose down --remove-orphans
+```
+
+[PostgreSQL]: https://www.postgresql.org
+[`pkgx`]: https://pkgx.sh
